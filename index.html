@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YAML Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <style>
+        /* Custom styles for better visual hierarchy and editing experience */
+        body {
+            font-family: 'Inter', sans-serif; /* Use Inter font */
+        }
+        .yaml-key {
+            font-weight: 600;
+            color: #1f2937; /* gray-800 */
+        }
+        .yaml-value-input {
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #d1d5db; /* gray-300 */
+            border-radius: 0.375rem; /* rounded-md */
+            width: 100%;
+            transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .yaml-value-input:focus {
+            outline: none;
+            border-color: #3b82f6; /* blue-500 */
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+        }
+        .yaml-section {
+            margin-top: 1rem;
+            padding: 1rem;
+            border: 1px solid #e5e7eb; /* gray-200 */
+            border-radius: 0.5rem; /* rounded-lg */
+            background-color: #f9fafb; /* gray-50 */
+        }
+         /* Style for objects within an array */
+        .array-object-item {
+             margin-bottom: 1rem;
+             padding: 1rem;
+             border: 1px solid #d1d5db; /* gray-300 */
+             border-radius: 0.5rem; /* rounded-lg */
+             background-color: #ffffff; /* white background */
+             position: relative; /* For positioning the remove button */
+             cursor: grab; /* Indicate draggable */
+        }
+        .array-object-item .remove-btn-corner {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            cursor: pointer; /* Ensure button cursor overrides grab */
+        }
+        .yaml-section-title { /* Also used for object item titles in arrays */
+            font-size: 1.125rem; /* text-lg */
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: #374151; /* gray-700 */
+            border-bottom: 1px solid #e5e7eb; /* gray-200 */
+            padding-bottom: 0.5rem;
+        }
+        /* Style for primitive items within an array */
+        .array-primitive-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            padding: 0.5rem; /* Add some padding */
+            background-color: #ffffff; /* White background */
+            border: 1px solid #e5e7eb; /* gray-200 */
+            border-radius: 0.375rem; /* rounded-md */
+            gap: 0.5rem; /* Add gap between input and button */
+            cursor: grab; /* Indicate draggable */
+        }
+        .remove-btn, .add-btn {
+            padding: 0.3rem 0.6rem; /* Smaller padding */
+            font-size: 0.875rem; /* Smaller font size */
+            border-radius: 0.375rem; /* rounded-md */
+            transition: background-color 0.2s ease-in-out;
+            white-space: nowrap; /* Prevent button text wrapping */
+            flex-shrink: 0; /* Prevent buttons from shrinking */
+            cursor: pointer; /* Ensure button cursor overrides grab */
+        }
+        .remove-btn {
+            background-color: #fecaca; /* red-200 */
+            color: #dc2626; /* red-600 */
+            border: 1px solid #f87171; /* red-400 */
+        }
+        .remove-btn:hover {
+            background-color: #f87171; /* red-400 */
+            color: #ffffff;
+        }
+        .add-btn {
+            background-color: #bfdbfe; /* blue-200 */
+            color: #2563eb; /* blue-600 */
+            border: 1px solid #93c5fd; /* blue-300 */
+        }
+        .add-btn:hover {
+            background-color: #93c5fd; /* blue-300 */
+            color: #1e40af; /* blue-800 */
+        }
+        /* Style for boolean toggles */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px; /* Smaller width */
+            height: 20px; /* Smaller height */
+            cursor: pointer;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 20px; /* Adjusted border-radius */
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px; /* Smaller handle */
+            width: 14px;  /* Smaller handle */
+            left: 3px;    /* Adjusted position */
+            bottom: 3px;  /* Adjusted position */
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #2563eb; /* blue-600 */
+        }
+        input:checked + .slider:before {
+            transform: translateX(20px); /* Adjusted transform */
+        }
+
+        /* SortableJS helper styles */
+        .sortable-ghost {
+            opacity: 0.4;
+            background-color: #c7d2fe; /* indigo-200 */
+        }
+        .sortable-chosen {
+             cursor: grabbing;
+        }
+        .array-list-container > div { /* Target direct children (items) for Sortable */
+           /* Ensure items are direct children if listContainer is the sortable element */
+        }
+
+    </style>
+     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
+
+    <div class="container mx-auto max-w-4xl bg-white p-6 rounded-xl shadow-md">
+        <h1 class="text-2xl font-semibold mb-6 text-gray-800 border-b pb-3">YAML Editor</h1>
+
+        <div class="mb-6">
+            <label for="yamlFile" class="block mb-2 text-sm font-medium text-gray-700">Upload YAML File (.yaml or .yml):</label>
+            <input type="file" id="yamlFile" accept=".yaml,.yml" class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+        </div>
+
+        <div id="messageArea" class="mb-4 text-sm"></div>
+
+        <div id="yamlEditor" class="mt-4 space-y-4">
+            <p class="text-gray-500 italic">Upload a YAML file to start editing.</p>
+        </div>
+
+        <div class="mt-8 pt-4 border-t border-gray-200">
+             <button id="saveButton" class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                Save & Download YAML
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const yamlFileInput = document.getElementById('yamlFile');
+        const yamlEditorContainer = document.getElementById('yamlEditor');
+        const saveButton = document.getElementById('saveButton');
+        const messageArea = document.getElementById('messageArea');
+
+        // State variable to hold the parsed YAML data
+        let yamlData = null;
+        let originalFileName = 'config.yaml'; // Default filename
+
+        // --- Event Listeners ---
+
+        // Listener for file input changes
+        yamlFileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) {
+                setMessage('No file selected.', 'text-gray-500');
+                clearEditor();
+                return;
+            }
+
+            originalFileName = file.name; // Store the original filename
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                const fileContent = e.target.result;
+                try {
+                    // Parse the YAML content
+                    yamlData = jsyaml.load(fileContent);
+                    if (typeof yamlData !== 'object' || yamlData === null) {
+                        throw new Error('Uploaded file does not contain valid YAML object data.');
+                    }
+                    // Render the editor UI
+                    renderEditor(yamlData, yamlEditorContainer, []); // Start with an empty path
+                    setMessage(`Successfully loaded ${originalFileName}. You can now edit values or drag array items to reorder.`, 'text-green-600');
+                    saveButton.disabled = false; // Enable save button
+                } catch (error) {
+                    console.error("YAML Parsing Error:", error);
+                    setMessage(`Error parsing YAML file: ${error.message}`, 'text-red-600');
+                    clearEditor();
+                    yamlData = null;
+                    saveButton.disabled = true;
+                }
+            };
+
+            reader.onerror = (e) => {
+                console.error("File Reading Error:", e);
+                setMessage('Error reading file.', 'text-red-600');
+                clearEditor();
+                yamlData = null;
+                saveButton.disabled = true;
+            };
+
+            reader.readAsText(file); // Read the file as text
+        });
+
+        // Listener for save button clicks
+        saveButton.addEventListener('click', () => {
+            if (!yamlData) {
+                setMessage('No data loaded to save.', 'text-red-600');
+                return;
+            }
+
+            try {
+                // Convert the JavaScript object back to a YAML string
+                const yamlString = jsyaml.dump(yamlData, { indent: 2, skipInvalid: true });
+
+                // Create a Blob object
+                const blob = new Blob([yamlString], { type: 'text/yaml;charset=utf-8' });
+
+                // Create a temporary download link
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                const newFileName = originalFileName.replace(/(\.yaml|\.yml)$/i, '_edited.yaml') || 'edited_config.yaml';
+                link.download = newFileName;
+
+                // Programmatically click the link to trigger the download
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                // Revoke the object URL
+                URL.revokeObjectURL(link.href);
+
+                // Provide clearer feedback
+                setMessage(`Download initiated for ${newFileName}. Check your browser's downloads.`, 'text-green-600');
+
+            } catch (error) {
+                console.error("YAML Dumping Error:", error);
+                setMessage(`Error preparing YAML for download: ${error.message}`, 'text-red-600');
+            }
+        });
+
+        // --- Helper Functions ---
+
+        /**
+         * Sets a message in the message area with specified CSS classes.
+         */
+        function setMessage(text, cssClasses = 'text-gray-500') {
+            messageArea.textContent = text;
+            messageArea.className = `mb-4 text-sm ${cssClasses}`;
+        }
+
+        /**
+         * Clears the editor display area.
+         */
+        function clearEditor() {
+            yamlEditorContainer.innerHTML = '<p class="text-gray-500 italic">Upload a YAML file to start editing.</p>';
+        }
+
+        /**
+         * Recursively renders the editor UI.
+         */
+        function renderEditor(data, container, currentPath) {
+            container.innerHTML = ''; // Clear previous content
+            if (data === null || data === undefined) {
+                 container.appendChild(createValueElement(data, currentPath, 'null or undefined'));
+                 return;
+            }
+            if (Array.isArray(data)) {
+                renderArray(data, container, currentPath);
+            } else if (typeof data === 'object') {
+                renderObject(data, container, currentPath);
+            } else {
+                 container.appendChild(createValueElement(data, currentPath, typeof data));
+            }
+        }
+
+        /**
+         * Renders UI elements for an object.
+         */
+        function renderObject(obj, container, currentPath) {
+             container.innerHTML = ''; // Clear container before rendering properties
+             Object.keys(obj).forEach(key => {
+                const value = obj[key];
+                const newPath = [...currentPath, key];
+                const itemContainer = document.createElement('div');
+                itemContainer.className = 'mb-3 property-container'; // Add class for potential targeting
+
+                const label = document.createElement('label');
+                label.textContent = `${key}:`;
+                label.className = 'block text-sm font-medium text-gray-700 mb-1 yaml-key';
+                itemContainer.appendChild(label);
+
+                const valueContainer = document.createElement('div');
+                 valueContainer.dataset.valuePath = newPath.join('.'); // Add path data attribute
+                 if (!container.classList.contains('array-object-item')) {
+                     valueContainer.className = 'ml-4';
+                 }
+
+                if (Array.isArray(value)) {
+                    const arraySection = document.createElement('div');
+                    arraySection.dataset.arrayPath = newPath.join('.'); // Add path data attribute
+                    if (currentPath.length === 0 || typeof getNestedValue(yamlData, currentPath.slice(0, -1)) === 'object') {
+                         arraySection.className = 'yaml-section';
+                    }
+                    renderArray(value, arraySection, newPath);
+                    valueContainer.appendChild(arraySection);
+                } else if (typeof value === 'object' && value !== null) {
+                    const objectSection = document.createElement('div');
+                    objectSection.dataset.objectPath = newPath.join('.'); // Add path data attribute
+                     if (currentPath.length === 0 || typeof getNestedValue(yamlData, currentPath.slice(0, -1)) === 'object') {
+                        // objectSection.className = 'yaml-section'; // Optional styling
+                     }
+                    renderObject(value, objectSection, newPath);
+                     valueContainer.appendChild(objectSection);
+                } else {
+                    valueContainer.appendChild(createValueElement(value, newPath, typeof value));
+                }
+                itemContainer.appendChild(valueContainer);
+                container.appendChild(itemContainer);
+            });
+        }
+
+        /**
+         * Renders UI elements for an array and initializes SortableJS.
+         */
+        function renderArray(arr, container, currentPath) {
+             container.innerHTML = ''; // Clear container
+             const listContainer = document.createElement('div');
+             listContainer.className = 'array-list-container'; // Add class for Sortable target
+             listContainer.dataset.path = currentPath.join(','); // Store path for SortableJS callback
+
+             arr.forEach((item, index) => {
+                const itemPath = [...currentPath, index];
+                const itemElement = document.createElement('div');
+                itemElement.dataset.index = index; // Store original index if needed
+
+                 const removeButton = document.createElement('button');
+                 removeButton.textContent = 'Remove';
+                 removeButton.className = 'remove-btn';
+                 removeButton.type = 'button';
+                 removeButton.onclick = (e) => {
+                     e.stopPropagation(); // Prevent drag start on button click
+                     const currentArray = getNestedValue(yamlData, currentPath);
+                     const currentIndex = Array.from(listContainer.children).indexOf(itemElement); // Get current index from DOM
+                     if (currentIndex !== -1) {
+                         removeItemFromArray(currentPath, currentIndex);
+                         // Re-render this array section
+                         renderArray(getNestedValue(yamlData, currentPath), container, currentPath);
+                     }
+                 };
+
+                if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+                    itemElement.className = 'array-object-item';
+                    const title = document.createElement('h4');
+                    title.textContent = item.name ? `Item: ${item.name}` : `Item ${index + 1}`;
+                    title.className = 'text-md font-semibold mb-2 text-gray-600';
+                    itemElement.appendChild(title);
+                    renderObject(item, itemElement, itemPath); // Render object content inside
+                    removeButton.classList.add('remove-btn-corner');
+                    itemElement.appendChild(removeButton);
+                } else {
+                    itemElement.className = 'array-primitive-item';
+                    const valueElement = createValueElement(item, itemPath, typeof item);
+                    valueElement.classList.add('flex-grow');
+                    itemElement.appendChild(valueElement);
+                    itemElement.appendChild(removeButton);
+                }
+                listContainer.appendChild(itemElement);
+            });
+
+            container.appendChild(listContainer);
+
+            // Initialize SortableJS on the list container
+            Sortable.create(listContainer, {
+                animation: 150, // Animation speed
+                ghostClass: 'sortable-ghost', // Class for the drop placeholder
+                chosenClass: 'sortable-chosen', // Class for the chosen item
+                handle: '.array-object-item, .array-primitive-item', // Specify drag handles if needed, here using the items themselves
+                onEnd: function (evt) {
+                    // Get path from the container's dataset
+                    const pathArray = evt.from.dataset.path.split(',').map(p => isNaN(parseInt(p)) ? p : parseInt(p)); // Convert path string back to array
+                    const array = getNestedValue(yamlData, pathArray);
+
+                    if (Array.isArray(array)) {
+                        // Reorder the item in the yamlData array
+                        const [movedItem] = array.splice(evt.oldIndex, 1);
+                        array.splice(evt.newIndex, 0, movedItem);
+
+                        // Re-render the array in the UI to ensure consistency
+                        // Pass the original container `container` not `evt.from` (which is listContainer)
+                        renderArray(array, container, pathArray);
+                    } else {
+                        console.error("SortableJS onEnd: Could not find array for path", pathArray);
+                        setMessage("Error reordering array.", "text-red-600");
+                    }
+                },
+            });
+
+
+            // Add "Add Item" button
+            const addButton = document.createElement('button');
+            addButton.textContent = 'Add Item';
+            addButton.className = 'add-btn mt-2';
+            addButton.type = 'button';
+            addButton.onclick = () => {
+                const currentArray = getNestedValue(yamlData, currentPath);
+                const defaultValue = (currentArray.length > 0 && typeof currentArray[0] === 'object' && currentArray[0] !== null && !Array.isArray(currentArray[0])) ? {} : '';
+                addItemToArray(currentPath, defaultValue);
+                // Re-render this array section
+                renderArray(getNestedValue(yamlData, currentPath), container, currentPath);
+            };
+            container.appendChild(addButton);
+        }
+
+        /**
+         * Creates an appropriate input element for a given value and type.
+         */
+        function createValueElement(value, path, type) {
+             if (type === 'null or undefined') {
+                const nullElement = document.createElement('span');
+                nullElement.textContent = String(value);
+                nullElement.className = 'text-gray-400 italic px-3 py-2';
+                return nullElement;
+            } else if (type === 'boolean') {
+                const switchContainer = document.createElement('label');
+                switchContainer.className = 'switch flex-shrink-0';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = value;
+                checkbox.onchange = (e) => updateYamlData(path, e.target.checked);
+                const slider = document.createElement('span');
+                slider.className = 'slider';
+                switchContainer.appendChild(checkbox);
+                switchContainer.appendChild(slider);
+                return switchContainer;
+            } else { // String or Number
+                const input = document.createElement('input');
+                input.className = 'yaml-value-input';
+                input.type = (type === 'number') ? 'number' : 'text';
+                input.value = value;
+                input.onchange = (e) => {
+                    let newValue;
+                    if (type === 'number') {
+                        newValue = parseFloat(e.target.value);
+                        if (isNaN(newValue)) {
+                            setMessage(`Invalid number: ${e.target.value}`, 'text-orange-500');
+                            e.target.value = getNestedValue(yamlData, path); // Revert
+                            return;
+                        }
+                    } else {
+                        newValue = e.target.value;
+                    }
+                    updateYamlData(path, newValue);
+                };
+                input.onkeydown = (e) => {
+                     // Prevent SortableJS drag from starting when focusing/editing input
+                     e.stopPropagation();
+                };
+                if (type === 'number') {
+                    input.step = 'any';
+                }
+                return input;
+            }
+        }
+
+        /**
+         * Updates the value in the nested yamlData object based on the path.
+         */
+        function updateYamlData(path, newValue) {
+            if (!yamlData || path.length === 0) return;
+            let current = yamlData;
+            for (let i = 0; i < path.length - 1; i++) {
+                const key = path[i];
+                if (current === null || typeof current !== 'object' || current[key] === undefined) {
+                     console.error(`Path error at segment ${i} ('${key}') for path: ${path.join('.')}`);
+                     setMessage(`Error: Cannot set value, invalid path segment '${key}'.`, 'text-red-600');
+                     return;
+                }
+                current = current[key];
+            }
+            if (current === null || typeof current !== 'object') {
+                 console.error(`Parent element is not an object/array at path: ${path.slice(0, -1).join('.')}`);
+                 setMessage(`Error: Cannot set value, parent element is not valid.`, 'text-red-600');
+                 return;
+            }
+            const finalKey = path[path.length - 1];
+            current[finalKey] = newValue;
+            // console.log("Updated yamlData:", JSON.stringify(yamlData, null, 2));
+        }
+
+        /**
+         * Gets a value from the nested yamlData object based on the path.
+         */
+        function getNestedValue(obj, path) {
+             if (!obj || path.length === 0) return obj;
+             let current = obj;
+             for (const key of path) {
+                 if (current === null || typeof current !== 'object' || !(key in current)) {
+                     // console.warn(`Path not found at key '${key}' in path: ${path.join('.')}`);
+                     return undefined;
+                 }
+                 current = current[key];
+             }
+             return current;
+        }
+
+        /**
+         * Removes an item from an array within the yamlData object.
+         */
+        function removeItemFromArray(arrayPath, indexToRemove) {
+            const array = getNestedValue(yamlData, arrayPath);
+            if (Array.isArray(array)) {
+                 if (indexToRemove >= 0 && indexToRemove < array.length) {
+                    array.splice(indexToRemove, 1);
+                 } else {
+                     console.error(`Invalid index ${indexToRemove} for array at path ${arrayPath.join('.')}`);
+                     setMessage(`Error: Invalid index for removal.`, 'text-red-600');
+                 }
+            } else {
+                 console.error(`Not an array at path ${arrayPath.join('.')}`);
+                 setMessage(`Error: Cannot remove item, target is not an array.`, 'text-red-600');
+            }
+        }
+
+        /**
+         * Adds an item to an array within the yamlData object.
+         */
+        function addItemToArray(arrayPath, newItem) {
+             const array = getNestedValue(yamlData, arrayPath);
+             if (Array.isArray(array)) {
+                array.push(newItem);
+            } else {
+                 console.error(`Not an array at path ${arrayPath.join('.')}`);
+                 setMessage(`Error: Cannot add item, target is not an array.`, 'text-red-600');
+            }
+        }
+
+    </script>
+
+</body>
+</html>
